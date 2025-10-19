@@ -22,6 +22,8 @@ import com.example.ridesharingapp.utils.AppHelper;
 import com.example.ridesharingapp.utils.DataPart;
 import com.example.ridesharingapp.utils.VolleyMultipartRequest;
 import com.example.ridesharingapp.utils.VolleySingleton;
+import com.bumptech.glide.Glide;
+import de.hdodenhof.circleimageview.CircleImageView;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -44,14 +46,19 @@ public class ProfileActivity extends AppCompatActivity {
     private Uri mImageUri;
     private ProgressDialog mProgressDialog;
 
+    private CircleImageView mProfilePic;
+
     // Use ActivityResultLauncher for image selection
     private final ActivityResultLauncher<String> mGetContent = registerForActivityResult(
             new ActivityResultContracts.GetContent(),
             uri -> {
                 if (uri != null) {
                     mImageUri = uri;
-                    Toast.makeText(this, "Image selected. Ready to upload.", Toast.LENGTH_SHORT).show();
-                    // Optional: Load image into CircleImageView here
+                    // Optional: Show the selected local file immediately
+                    Glide.with(this).load(mImageUri).into(mProfilePic);
+
+                    mChangePicButton.setText("Upload Photo"); // Update button text
+                    Toast.makeText(this, "Image selected. Click 'Upload Photo'.", Toast.LENGTH_LONG).show();
                 }
             }
     );
@@ -64,6 +71,8 @@ public class ProfileActivity extends AppCompatActivity {
 
         // Correctly referencing the Button ID from the XML
         mChangePicButton = findViewById(R.id.btnChangePic);
+
+        mProfilePic = findViewById(R.id.ivProfilePic);
 
         mChangePicButton.setOnClickListener(v -> {
             if (mImageUri == null) {
@@ -144,9 +153,14 @@ public class ProfileActivity extends AppCompatActivity {
                             JSONObject jsonObject = new JSONObject(result);
                             String secureUrl = jsonObject.getString("secure_url");
 
-                            // Display success message and the returned URL
-                            Toast.makeText(ProfileActivity.this, "Upload Success! URL: " + secureUrl, Toast.LENGTH_LONG).show();
-                            // HERE you can load the secureUrl into your ivProfilePic
+                            // --- FIX 1: Reset State ---
+                            mImageUri = null; // Clear the URI
+                            mChangePicButton.setText("Change Photo"); // Reset button text
+
+                            // --- FIX 2: Display the Image ---
+                            displayNewProfilePicture(secureUrl); // Call the function to load the image
+
+                            Toast.makeText(ProfileActivity.this, "Upload Success! Photo loaded.", Toast.LENGTH_LONG).show();
                             Log.d(TAG, "Cloudinary Response: " + jsonObject.toString());
 
                         } catch (JSONException e) {
@@ -199,5 +213,15 @@ public class ProfileActivity extends AppCompatActivity {
         };
 
         VolleySingleton.getInstance(this).addToRequestQueue(cloudinaryRequest);
+    }
+
+    // function to handle displaying the uploaded image
+    private void displayNewProfilePicture(String secureUrl) {
+        // Use Glide to load the image from the Cloudinary URL into the CircleImageView
+        Glide.with(this)
+                .load(secureUrl)
+                // Optional: Add a placeholder or error image
+                // .placeholder(R.drawable.default_placeholder)
+                .into(mProfilePic);
     }
 }
