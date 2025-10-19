@@ -73,7 +73,7 @@ dependencies {
     androidTestImplementation(libs.ext.junit)
     androidTestImplementation(libs.espresso.core)
 
-    // ✅ Firebase
+    // Firebase
     implementation(platform("com.google.firebase:firebase-bom:33.4.0"))
     implementation("com.google.firebase:firebase-database:20.3.0")
     implementation("com.google.firebase:firebase-auth:22.3.0")
@@ -81,23 +81,27 @@ dependencies {
     implementation("com.google.firebase:firebase-appcheck-playintegrity")
     implementation("com.google.firebase:firebase-appcheck-debug")
 
-    // ✅ Mapbox
+    // Mapbox
     implementation("com.mapbox.maps:android:10.17.0")
     implementation("com.mapbox.navigation:android:2.17.1")
     implementation("com.mapbox.navigation:ui-dropin:2.17.1")
 
-    // ✅ Google Location Services
+    // Google Location Services
     implementation("com.google.android.gms:play-services-location:21.0.1")
 
-    // ✅ RecyclerView + CardView
+    // RecyclerView + CardView
     implementation("androidx.recyclerview:recyclerview:1.3.2")
     implementation("androidx.cardview:cardview:1.0.0")
 
-    // ✅ Image loading
+    // Image loading
     implementation("com.github.bumptech.glide:glide:4.16.0")
     annotationProcessor("com.github.bumptech.glide:compiler:4.16.0")
 
-    // ✅ Circle ImageView
-     implementation("de.hdodenhof:circleimageview:3.1.0")
+    // Circle ImageView
+    implementation("de.hdodenhof:circleimageview:3.1.0")
 //    implementation("de.hdodenhof.circleimageview:circleimageview:3.1.0")
+
+    // library to handle HTTP requests (e.g., Volley or OkHttp). this lets Android app communicate with the server
+    implementation("com.android.volley:volley:1.2.1")
+//    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }
