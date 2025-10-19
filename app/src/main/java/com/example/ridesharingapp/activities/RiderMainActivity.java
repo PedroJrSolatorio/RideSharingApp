@@ -217,17 +217,22 @@ public class RiderMainActivity extends AppCompatActivity {
 
         double radiusKm = 5; // Example: 5km radius
 
+        Log.d("RiderMainActivity", "Searching for drivers near: " + riderLat + ", " + riderLng);
+
         firebaseHelper.findNearbyDrivers(riderLat, riderLng, radiusKm,
                 new FirebaseHelper.NearbyDriversCallback() {
                     @Override
                     public void onDriversFound(List<Driver> drivers) {
                         runOnUiThread(() -> {
+                            Log.d("RiderMainActivity", "Found " + drivers.size() + " drivers");
+
                             // Clear old markers
                             if (pointAnnotationManager != null) {
                                 pointAnnotationManager.deleteAll();
                             }
 
                             if (drivers.isEmpty()) {
+                                Log.d("RiderMainActivity", "No drivers currently available nearby");
                                 Toast.makeText(RiderMainActivity.this,
                                         "No drivers nearby",
                                         Toast.LENGTH_SHORT).show();
@@ -250,6 +255,9 @@ public class RiderMainActivity extends AppCompatActivity {
                             if (pointAnnotationManager != null && !annotationOptions.isEmpty()) {
                                 pointAnnotationManager.create(annotationOptions);
                                 Log.d("RiderMainActivity", "Added " + drivers.size() + " driver markers");
+                                Toast.makeText(RiderMainActivity.this,
+                                        "Found " + drivers.size() + " nearby drivers",
+                                        Toast.LENGTH_SHORT).show();
                             }
                         });
                     }
@@ -257,6 +265,7 @@ public class RiderMainActivity extends AppCompatActivity {
                     @Override
                     public void onError(String error) {
                         runOnUiThread(() -> {
+                            Log.e("RiderMainActivity", "Error fetching drivers: " + error);
                             Toast.makeText(RiderMainActivity.this,
                                     "Error loading drivers: " + error,
                                     Toast.LENGTH_SHORT).show();

@@ -18,6 +18,7 @@ import com.android.volley.VolleyError;
 import com.android.volley.toolbox.JsonObjectRequest;
 import com.example.ridesharingapp.R;
 import com.example.ridesharingapp.utils.AppHelper;
+import com.example.ridesharingapp.utils.CloudinaryHelper;
 import com.example.ridesharingapp.utils.DataPart;
 import com.example.ridesharingapp.utils.VolleyMultipartRequest;
 import com.example.ridesharingapp.utils.VolleySingleton;
@@ -147,39 +148,43 @@ public class ProfileActivity extends AppCompatActivity {
         }
 
         mProgressDialog = new ProgressDialog(this);
-        mProgressDialog.setMessage("Requesting upload signature...");
+        mProgressDialog.setMessage("Connecting to server...");
         mProgressDialog.show();
 
-        // STEP 1: Request the signed signature from your Node.js server
-        JsonObjectRequest signatureRequest = new JsonObjectRequest(
-                Request.Method.GET,
-                SIGNATURE_URL,
-                null, // No body needed for a GET request
-                response -> {
-                    try {
-                        // Parse the response from your server.js
-                        String signature = response.getString("signature");
-                        String timestamp = response.getString("timestamp");
-                        String cloudName = response.getString("cloudName"); // Use the cloud name to build the final URL
-                        String apiKey = response.getString("apiKey");
-                        String folder = response.getString("folder");
+        CloudinaryHelper.getUploadSignature(this, new CloudinaryHelper.SignatureCallback() {
+            @Override
+            public void onSuccess(JSONObject response) {
+                try {
+                    String signature = response.getString("signature");
+                    String timestamp = response.getString("timestamp");
+                    String cloudName = response.getString("cloudName");
+                    String apiKey = response.getString("apiKey");
+                    String folder = response.getString("folder");
 
-                        // Now proceed to the direct upload using the signature
-                        mProgressDialog.setMessage("Uploading photo directly to Cloudinary...");
-                        uploadToCloudinary(signature, timestamp, cloudName, apiKey, folder);
+                    mProgressDialog.setMessage("Uploading photo...");
+                    uploadToCloudinary(signature, timestamp, cloudName, apiKey, folder);
 
-                    } catch (JSONException e) {
-                        mProgressDialog.dismiss();
-                        Toast.makeText(ProfileActivity.this, "Error parsing signature response: " + e.getMessage(), Toast.LENGTH_LONG).show();
-                        Log.e(TAG, "Signature JSON Error: ", e);
-                    }
-                },
-                error -> {
+                } catch (JSONException e) {
                     mProgressDialog.dismiss();
-                    Toast.makeText(ProfileActivity.this, "Failed to get upload signature.", Toast.LENGTH_LONG).show();
-                    Log.e(TAG, "Signature Request Volley Error: " + error.toString());
+                    Toast.makeText(ProfileActivity.this,
+                            "Error parsing response: " + e.getMessage(),
+                            Toast.LENGTH_LONG).show();
                 }
-        );
+            }
+
+            @Override
+            public void onFailure(String error) {
+                mProgressDialog.dismiss();
+                Toast.makeText(ProfileActivity.this,
+                        "Failed to connect: " + error,
+                        Toast.LENGTH_LONG).show();
+            }
+
+            @Override
+            public void onColdStart() {
+                mProgressDialog.setMessage("Waking up server, please wait...");
+            }
+        });
     }
 
     // New method for the second request (Direct Upload)

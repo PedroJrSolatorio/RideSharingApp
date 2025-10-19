@@ -19,20 +19,30 @@ import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
 
+import com.android.volley.AuthFailureError;
 import com.example.ridesharingapp.R;
 import com.example.ridesharingapp.models.User;
 import com.example.ridesharingapp.models.Driver;
 import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.firestore.FirebaseFirestore;
-import com.google.firebase.storage.FirebaseStorage;
-import com.google.firebase.storage.StorageReference;
 
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.Locale;
+
+import com.android.volley.Request;
+import com.android.volley.toolbox.JsonObjectRequest;
+import com.example.ridesharingapp.utils.VolleyMultipartRequest;
+import com.example.ridesharingapp.utils.VolleySingleton;
+import com.example.ridesharingapp.utils.DataPart;
+import com.example.ridesharingapp.utils.AppHelper;
+import org.json.JSONException;
+import org.json.JSONObject;
+import java.io.IOException;
+import java.util.Map;
 
 public class SignUpActivity extends AppCompatActivity {
 
@@ -52,7 +62,6 @@ public class SignUpActivity extends AppCompatActivity {
 
     private FirebaseAuth auth;
     private FirebaseFirestore firestore;
-    private FirebaseStorage storage;
 
     // Document URIs
     private Uri validIdUri;
@@ -63,6 +72,9 @@ public class SignUpActivity extends AppCompatActivity {
 
     // Image picker launcher
     private ActivityResultLauncher<String> imagePickerLauncher;
+
+    private static final String SIGNATURE_URL = "https://ridesharingbackend-hi94.onrender.com/api/upload/signature";
+    private static final String CLOUDINARY_UPLOAD_URL = "https://api.cloudinary.com/v1_1/";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -110,7 +122,6 @@ public class SignUpActivity extends AppCompatActivity {
     private void initializeFirebase() {
         auth = FirebaseAuth.getInstance();
         firestore = FirebaseFirestore.getInstance();
-        storage = FirebaseStorage.getInstance();
     }
 
     private void setupImagePicker() {
@@ -339,87 +350,193 @@ public class SignUpActivity extends AppCompatActivity {
 
     private void uploadRiderDocuments(String uid, String name, String email, String phone,
                                       String birthdate, String gender, String userType) {
-        StorageReference validIdRef = storage.getReference()
-                .child("documents/" + uid + "/validId.jpg");
+        // Upload valid ID to Cloudinary
+        uploadToCloudinary(validIdUri, "validId", new CloudinaryUploadCallback() {
+            @Override
+            public void onSuccess(String imageUrl) {
+                createRiderProfile(uid, name, email, phone, birthdate, gender, userType, imageUrl);
+            }
 
-        validIdRef.putFile(validIdUri)
-                .addOnSuccessListener(taskSnapshot -> {
-                    validIdRef.getDownloadUrl().addOnSuccessListener(uri -> {
-                        String validIdUrl = uri.toString();
-                        createRiderProfile(uid, name, email, phone, birthdate, gender, userType, validIdUrl);
-                    });
-                })
-                .addOnFailureListener(e -> {
-                    progressBar.setVisibility(ProgressBar.GONE);
-                    auth.getCurrentUser().delete();
-                    Toast.makeText(SignUpActivity.this,
-                            "Failed to upload documents: " + e.getMessage(),
-                            Toast.LENGTH_SHORT).show();
-                });
+            @Override
+            public void onFailure(String error) {
+                progressBar.setVisibility(ProgressBar.GONE);
+                auth.getCurrentUser().delete();
+                Toast.makeText(SignUpActivity.this,
+                        "Failed to upload Valid ID: " + error,
+                        Toast.LENGTH_SHORT).show();
+            }
+        });
     }
 
     private void uploadDriverDocuments(String uid, String name, String email, String phone,
                                        String birthdate, String gender, String userType) {
-        StorageReference docsRef = storage.getReference().child("documents/" + uid);
+        final String[] urls = new String[4]; // license, vehiclePic, orCr, certification
+        final int[] uploadCount = {0};
 
-        // Upload license and get URL
-        docsRef.child("license.jpg").putFile(licenseUri)
-                .addOnSuccessListener(taskSnapshot -> {
-                    docsRef.child("license.jpg").getDownloadUrl().addOnSuccessListener(licenseUrl -> {
-                        // Upload vehicle pic and get URL
-                        docsRef.child("vehiclePic.jpg").putFile(vehiclePicUri)
-                                .addOnSuccessListener(taskSnapshot2 -> {
-                                    docsRef.child("vehiclePic.jpg").getDownloadUrl().addOnSuccessListener(vehiclePicUrl -> {
-                                        // Upload OR/CR and get URL
-                                        docsRef.child("orCr.jpg").putFile(orCrUri)
-                                                .addOnSuccessListener(taskSnapshot3 -> {
-                                                    docsRef.child("orCr.jpg").getDownloadUrl().addOnSuccessListener(orCrUrl -> {
-                                                        // Upload certification and get URL
-                                                        docsRef.child("certification.jpg").putFile(certificationUri)
-                                                                .addOnSuccessListener(taskSnapshot4 -> {
-                                                                    docsRef.child("certification.jpg").getDownloadUrl().addOnSuccessListener(certificationUrl -> {
-                                                                        // All uploads successful, create driver profile
-                                                                        createDriverProfile(uid, name, email, phone, birthdate, gender, userType,
-                                                                                "pending", licenseUrl.toString(), vehiclePicUrl.toString(),
-                                                                                orCrUrl.toString(), certificationUrl.toString());
-                                                                    });
-                                                                })
-                                                                .addOnFailureListener(e -> {
-                                                                    progressBar.setVisibility(ProgressBar.GONE);
-                                                                    auth.getCurrentUser().delete();
-                                                                    Toast.makeText(SignUpActivity.this,
-                                                                            "Failed to upload certification: " + e.getMessage(),
-                                                                            Toast.LENGTH_SHORT).show();
-                                                                });
-                                                    });
-                                                })
-                                                .addOnFailureListener(e -> {
-                                                    progressBar.setVisibility(ProgressBar.GONE);
-                                                    auth.getCurrentUser().delete();
-                                                    Toast.makeText(SignUpActivity.this,
-                                                            "Failed to upload OR/CR: " + e.getMessage(),
-                                                            Toast.LENGTH_SHORT).show();
-                                                });
-                                    });
-                                })
-                                .addOnFailureListener(e -> {
-                                    progressBar.setVisibility(ProgressBar.GONE);
-                                    auth.getCurrentUser().delete();
-                                    Toast.makeText(SignUpActivity.this,
-                                            "Failed to upload vehicle picture: " + e.getMessage(),
-                                            Toast.LENGTH_SHORT).show();
-                                });
-                    });
-                })
-                .addOnFailureListener(e -> {
-                    progressBar.setVisibility(ProgressBar.GONE);
-                    auth.getCurrentUser().delete();
-                    Toast.makeText(SignUpActivity.this,
-                            "Failed to upload driver's license: " + e.getMessage(),
-                            Toast.LENGTH_SHORT).show();
-                });
+        // Upload all 4 documents
+        uploadToCloudinary(licenseUri, "license", new CloudinaryUploadCallback() {
+            @Override
+            public void onSuccess(String imageUrl) {
+                urls[0] = imageUrl;
+                uploadCount[0]++;
+                checkAllUploadsComplete(urls, uploadCount[0], uid, name, email, phone, birthdate, gender, userType);
+            }
+
+            @Override
+            public void onFailure(String error) {
+                handleUploadFailure("Driver's License", error);
+            }
+        });
+
+        uploadToCloudinary(vehiclePicUri, "vehiclePic", new CloudinaryUploadCallback() {
+            @Override
+            public void onSuccess(String imageUrl) {
+                urls[1] = imageUrl;
+                uploadCount[0]++;
+                checkAllUploadsComplete(urls, uploadCount[0], uid, name, email, phone, birthdate, gender, userType);
+            }
+
+            @Override
+            public void onFailure(String error) {
+                handleUploadFailure("Vehicle Picture", error);
+            }
+        });
+
+        uploadToCloudinary(orCrUri, "orCr", new CloudinaryUploadCallback() {
+            @Override
+            public void onSuccess(String imageUrl) {
+                urls[2] = imageUrl;
+                uploadCount[0]++;
+                checkAllUploadsComplete(urls, uploadCount[0], uid, name, email, phone, birthdate, gender, userType);
+            }
+
+            @Override
+            public void onFailure(String error) {
+                handleUploadFailure("OR/CR", error);
+            }
+        });
+
+        uploadToCloudinary(certificationUri, "certification", new CloudinaryUploadCallback() {
+            @Override
+            public void onSuccess(String imageUrl) {
+                urls[3] = imageUrl;
+                uploadCount[0]++;
+                checkAllUploadsComplete(urls, uploadCount[0], uid, name, email, phone, birthdate, gender, userType);
+            }
+
+            @Override
+            public void onFailure(String error) {
+                handleUploadFailure("Certification", error);
+            }
+        });
     }
 
+    private void checkAllUploadsComplete(String[] urls, int uploadCount, String uid, String name,
+                                         String email, String phone, String birthdate, String gender, String userType) {
+        if (uploadCount == 4) {
+            // All uploads complete
+            createDriverProfile(uid, name, email, phone, birthdate, gender, userType,
+                    "pending", urls[0], urls[1], urls[2], urls[3]);
+        }
+    }
+
+    private void handleUploadFailure(String documentName, String error) {
+        progressBar.setVisibility(ProgressBar.GONE);
+        auth.getCurrentUser().delete();
+        Toast.makeText(SignUpActivity.this,
+                "Failed to upload " + documentName + ": " + error,
+                Toast.LENGTH_SHORT).show();
+    }
+
+    // Generic Cloudinary upload method
+    private void uploadToCloudinary(Uri fileUri, String documentType, CloudinaryUploadCallback callback) {
+        // STEP 1: Get signature from your server
+        JsonObjectRequest signatureRequest = new JsonObjectRequest(
+                Request.Method.GET,
+                SIGNATURE_URL,
+                null,
+                response -> {
+                    try {
+                        String signature = response.getString("signature");
+                        String timestamp = response.getString("timestamp");
+                        String cloudName = response.getString("cloudName");
+                        String apiKey = response.getString("apiKey");
+                        String folder = response.getString("folder");
+
+                        // STEP 2: Upload to Cloudinary
+                        uploadFileToCloudinary(fileUri, documentType, signature, timestamp,
+                                cloudName, apiKey, folder, callback);
+
+                    } catch (JSONException e) {
+                        callback.onFailure("Error parsing signature response: " + e.getMessage());
+                    }
+                },
+                error -> callback.onFailure("Failed to get upload signature: " + error.toString())
+        );
+
+        VolleySingleton.getInstance(this).addToRequestQueue(signatureRequest);
+    }
+
+    private void uploadFileToCloudinary(Uri fileUri, String documentType, String signature,
+                                        String timestamp, String cloudName, String apiKey,
+                                        String folder, CloudinaryUploadCallback callback) {
+        final String finalCloudinaryUrl = CLOUDINARY_UPLOAD_URL + cloudName + "/image/upload";
+
+        VolleyMultipartRequest cloudinaryRequest = new VolleyMultipartRequest(
+                Request.Method.POST,
+                finalCloudinaryUrl,
+                response -> {
+                    try {
+                        String result = new String(response.data);
+                        JSONObject jsonObject = new JSONObject(result);
+                        String secureUrl = jsonObject.getString("secure_url");
+                        callback.onSuccess(secureUrl);
+                    } catch (JSONException e) {
+                        callback.onFailure("Error parsing Cloudinary response: " + e.getMessage());
+                    }
+                },
+                error -> {
+                    String errorMsg = (error.networkResponse != null && error.networkResponse.data != null)
+                            ? new String(error.networkResponse.data) : error.getMessage();
+                    callback.onFailure(errorMsg);
+                }) {
+
+            @Override
+            protected Map<String, String> getParams() throws AuthFailureError {
+                Map<String, String> params = new HashMap<>();
+                params.put("api_key", apiKey);
+                params.put("timestamp", timestamp);
+                params.put("signature", signature);
+                params.put("folder", folder);
+                return params;
+            }
+
+            @Override
+            protected Map<String, DataPart> getByteData() {
+                Map<String, DataPart> params = new HashMap<>();
+                try {
+                    byte[] imageBytes = AppHelper.getBytesFromUri(SignUpActivity.this, fileUri);
+                    params.put("file", new DataPart(
+                            documentType + ".jpg",
+                            imageBytes,
+                            "image/jpeg"));
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+                return params;
+            }
+        };
+
+        VolleySingleton.getInstance(this).addToRequestQueue(cloudinaryRequest);
+    }
+
+    // Callback interface for Cloudinary uploads
+    interface CloudinaryUploadCallback {
+        void onSuccess(String imageUrl);
+        void onFailure(String error);
+    }
+
+    // Update the create profile methods - remove Firebase Storage references
     private void createRiderProfile(String uid, String name, String email, String phone,
                                     String birthdate, String gender, String userType, String validIdUrl) {
         boolean isVerified = false;
