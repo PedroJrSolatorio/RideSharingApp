@@ -217,42 +217,53 @@ public class RiderMainActivity extends AppCompatActivity {
 
         double radiusKm = 5; // Example: 5km radius
 
-        firebaseHelper.findNearbyDrivers(riderLat, riderLng, radiusKm, new ValueEventListener() {
-            @Override
-            public void onDataChange(@NonNull DataSnapshot snapshot) {
-                if (pointAnnotationManager != null) {
-                    pointAnnotationManager.deleteAll(); // Clear old markers
-                }
+        firebaseHelper.findNearbyDrivers(riderLat, riderLng, radiusKm,
+                new FirebaseHelper.NearbyDriversCallback() {
+                    @Override
+                    public void onDriversFound(List<Driver> drivers) {
+                        runOnUiThread(() -> {
+                            // Clear old markers
+                            if (pointAnnotationManager != null) {
+                                pointAnnotationManager.deleteAll();
+                            }
 
-                List<Driver> drivers = new ArrayList<>();
-                for (DataSnapshot ds : snapshot.getChildren()) {
-                    Driver driver = ds.getValue(Driver.class);
-                    if (driver != null) drivers.add(driver);
-                }
+                            if (drivers.isEmpty()) {
+                                Toast.makeText(RiderMainActivity.this,
+                                        "No drivers nearby",
+                                        Toast.LENGTH_SHORT).show();
+                                return;
+                            }
 
-                // Add driver markers
-                List<PointAnnotationOptions> annotationOptions = new ArrayList<>();
-                for (Driver driver : drivers) {
-                    Point driverPoint = Point.fromLngLat(
-                            driver.getCurrentLongitude(),
-                            driver.getCurrentLatitude()
-                    );
-                    PointAnnotationOptions options = new PointAnnotationOptions()
-                            .withPoint(driverPoint)
-                            .withIconImage("driver_icon");
-                    annotationOptions.add(options);
-                }
+                            // Add driver markers
+                            List<PointAnnotationOptions> annotationOptions = new ArrayList<>();
+                            for (Driver driver : drivers) {
+                                Point driverPoint = Point.fromLngLat(
+                                        driver.getCurrentLongitude(),
+                                        driver.getCurrentLatitude()
+                                );
+                                PointAnnotationOptions options = new PointAnnotationOptions()
+                                        .withPoint(driverPoint)
+                                        .withIconImage("driver_icon");
+                                annotationOptions.add(options);
+                            }
 
-                if (pointAnnotationManager != null && !annotationOptions.isEmpty()) {
-                    pointAnnotationManager.create(annotationOptions);
-                }
-            }
+                            if (pointAnnotationManager != null && !annotationOptions.isEmpty()) {
+                                pointAnnotationManager.create(annotationOptions);
+                                Log.d("RiderMainActivity", "Added " + drivers.size() + " driver markers");
+                            }
+                        });
+                    }
 
-            @Override
-            public void onCancelled(@NonNull DatabaseError error) {
-                Toast.makeText(RiderMainActivity.this, "Error loading drivers", Toast.LENGTH_SHORT).show();
-            }
-        });
+                    @Override
+                    public void onError(String error) {
+                        runOnUiThread(() -> {
+                            Toast.makeText(RiderMainActivity.this,
+                                    "Error loading drivers: " + error,
+                                    Toast.LENGTH_SHORT).show();
+                            Log.e("RiderMainActivity", "Error fetching drivers: " + error);
+                        });
+                    }
+                });
     }
 
     // -------------------- SETUP LOCATION ENGINE --------------------
