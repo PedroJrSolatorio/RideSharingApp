@@ -16,6 +16,7 @@ import com.android.volley.NetworkResponse;
 import com.android.volley.Request;
 import com.android.volley.Response;
 import com.android.volley.VolleyError;
+import com.android.volley.toolbox.JsonObjectRequest;
 import com.example.ridesharingapp.R;
 import com.example.ridesharingapp.utils.AppHelper;
 import com.example.ridesharingapp.utils.DataPart;
@@ -33,7 +34,11 @@ public class ProfileActivity extends AppCompatActivity {
 
     private static final String TAG = "ProfileActivity";
     // Render public url + actual API endpoint
-    private static final String UPLOAD_URL = "https://ridesharingbackend-hi94.onrender.com/api/upload_profile";
+
+    // URL to get signature from your Node.js server
+    private static final String SIGNATURE_URL = "https://ridesharingbackend-hi94.onrender.com/api/upload/signature";
+    // Base URL for direct upload
+    private static final String CLOUDINARY_UPLOAD_URL = "https://api.cloudinary.com/v1_1/";
 
     private Button mChangePicButton;
     private Uri mImageUri;
@@ -85,13 +90,51 @@ public class ProfileActivity extends AppCompatActivity {
         }
 
         mProgressDialog = new ProgressDialog(this);
-        mProgressDialog.setMessage("Uploading profile...");
+        mProgressDialog.setMessage("Requesting upload signature...");
         mProgressDialog.show();
 
-        // **FIXED: Using the 4-argument constructor variant that does not require an explicit 'headers' map.**
-        VolleyMultipartRequest multipartRequest = new VolleyMultipartRequest(
+        // STEP 1: Request the signed signature from your Node.js server
+        JsonObjectRequest signatureRequest = new JsonObjectRequest(
+                Request.Method.GET,
+                SIGNATURE_URL,
+                null, // No body needed for a GET request
+                response -> {
+                    try {
+                        // Parse the response from your server.js
+                        String signature = response.getString("signature");
+                        String timestamp = response.getString("timestamp");
+                        String cloudName = response.getString("cloudName"); // Use the cloud name to build the final URL
+                        String apiKey = response.getString("apiKey");
+                        String folder = response.getString("folder");
+
+                        // Now proceed to the direct upload using the signature
+                        mProgressDialog.setMessage("Uploading photo directly to Cloudinary...");
+                        uploadToCloudinary(signature, timestamp, cloudName, apiKey, folder);
+
+                    } catch (JSONException e) {
+                        mProgressDialog.dismiss();
+                        Toast.makeText(ProfileActivity.this, "Error parsing signature response: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                        Log.e(TAG, "Signature JSON Error: ", e);
+                    }
+                },
+                error -> {
+                    mProgressDialog.dismiss();
+                    Toast.makeText(ProfileActivity.this, "Failed to get upload signature.", Toast.LENGTH_LONG).show();
+                    Log.e(TAG, "Signature Request Volley Error: " + error.toString());
+                }
+        );
+
+        VolleySingleton.getInstance(this).addToRequestQueue(signatureRequest);
+    }
+
+    // New method for the second request (Direct Upload)
+    private void uploadToCloudinary(String signature, String timestamp, String cloudName, String apiKey, String folder) {
+        // Build the final Cloudinary upload URL
+        final String finalCloudinaryUrl = CLOUDINARY_UPLOAD_URL + cloudName + "/image/upload";
+
+        VolleyMultipartRequest cloudinaryRequest = new VolleyMultipartRequest(
                 Request.Method.POST,
-                UPLOAD_URL,
+                finalCloudinaryUrl,
                 new Response.Listener<NetworkResponse>() {
                     @Override
                     public void onResponse(NetworkResponse response) {
@@ -99,12 +142,16 @@ public class ProfileActivity extends AppCompatActivity {
                         try {
                             String result = new String(response.data);
                             JSONObject jsonObject = new JSONObject(result);
-                            Toast.makeText(ProfileActivity.this, "Upload Success: " + jsonObject.getString("message"), Toast.LENGTH_LONG).show();
-                            Log.d(TAG, "Response: " + jsonObject.toString());
+                            String secureUrl = jsonObject.getString("secure_url");
+
+                            // Display success message and the returned URL
+                            Toast.makeText(ProfileActivity.this, "Upload Success! URL: " + secureUrl, Toast.LENGTH_LONG).show();
+                            // HERE you can load the secureUrl into your ivProfilePic
+                            Log.d(TAG, "Cloudinary Response: " + jsonObject.toString());
+
                         } catch (JSONException e) {
                             e.printStackTrace();
-                            // Handle case where server returns a non-JSON success message
-                            Toast.makeText(ProfileActivity.this, "Upload Success, response malformed.", Toast.LENGTH_LONG).show();
+                            Toast.makeText(ProfileActivity.this, "Upload Success, but Cloudinary JSON response error.", Toast.LENGTH_LONG).show();
                         }
                     }
                 },
@@ -112,46 +159,45 @@ public class ProfileActivity extends AppCompatActivity {
                     @Override
                     public void onErrorResponse(VolleyError error) {
                         mProgressDialog.dismiss();
-                        // Better error message extraction for Volley
                         String errorMsg = (error.networkResponse != null && error.networkResponse.data != null)
                                 ? new String(error.networkResponse.data) : error.getMessage();
-                        Toast.makeText(ProfileActivity.this, "Upload Failed: " + errorMsg, Toast.LENGTH_LONG).show();
-                        Log.e(TAG, "Volley Error: " + errorMsg);
+                        Toast.makeText(ProfileActivity.this, "Cloudinary Upload Failed: " + errorMsg, Toast.LENGTH_LONG).show();
+                        Log.e(TAG, "Cloudinary Volley Error: " + errorMsg);
                     }
                 }) {
 
+            // Text parameters (Cloudinary required fields)
             @Override
             protected Map<String, String> getParams() throws AuthFailureError {
-                // Text parameters
                 Map<String, String> params = new HashMap<>();
-                params.put("user_id", "456"); // Example user ID
-                params.put("email", "jane.doe@example.com"); // Example email
+                params.put("api_key", apiKey);
+                params.put("timestamp", timestamp);
+                params.put("signature", signature);
+                params.put("folder", folder);
+                // You can add more parameters here like public_id
+                // params.put("public_id", "user_456_profile");
                 return params;
             }
 
+            // File parameters (The actual image)
             @Override
             protected Map<String, DataPart> getByteData() {
-                // File parameters
                 Map<String, DataPart> params = new HashMap<>();
                 try {
-                    // Convert Uri to byte array
                     byte[] imageBytes = AppHelper.getBytesFromUri(ProfileActivity.this, mImageUri);
-
-                    // "profile_pic" is the field name the server expects for the file
-                    params.put("profile_pic", new DataPart(
-                            "profile_image.jpg", // File name sent to server
-                            imageBytes,          // File content as byte array
-                            "image/jpeg"));      // MIME type
-
+                    // The field name for the image file MUST be 'file' for Cloudinary
+                    params.put("file", new DataPart(
+                            "profile_image.jpg",
+                            imageBytes,
+                            "image/jpeg"));
                 } catch (IOException e) {
                     e.printStackTrace();
-                    Toast.makeText(ProfileActivity.this, "Error converting image.", Toast.LENGTH_LONG).show();
+                    Toast.makeText(ProfileActivity.this, "Error converting image for upload.", Toast.LENGTH_LONG).show();
                 }
                 return params;
             }
         };
 
-        // Add the request to the RequestQueue
-        VolleySingleton.getInstance(this).addToRequestQueue(multipartRequest);
+        VolleySingleton.getInstance(this).addToRequestQueue(cloudinaryRequest);
     }
 }
