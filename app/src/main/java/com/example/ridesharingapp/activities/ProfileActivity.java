@@ -1,7 +1,6 @@
 package com.example.ridesharingapp.activities;
 
 import android.app.ProgressDialog;
-import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
@@ -25,6 +24,11 @@ import com.example.ridesharingapp.utils.VolleySingleton;
 import com.bumptech.glide.Glide;
 import de.hdodenhof.circleimageview.CircleImageView;
 
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
+import android.widget.TextView;
+import com.google.firebase.firestore.FirebaseFirestore;
+
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -42,10 +46,12 @@ public class ProfileActivity extends AppCompatActivity {
     // Base URL for direct upload
     private static final String CLOUDINARY_UPLOAD_URL = "https://api.cloudinary.com/v1_1/";
 
+    private FirebaseFirestore firestore;
     private Button mChangePicButton;
     private Uri mImageUri;
     private ProgressDialog mProgressDialog;
-
+    private TextView mTvName;
+    private TextView mTvEmail;
     private CircleImageView mProfilePic;
 
     // Use ActivityResultLauncher for image selection
@@ -69,7 +75,13 @@ public class ProfileActivity extends AppCompatActivity {
         // Correctly referencing the XML layout
         setContentView(R.layout.activity_profile);
 
-        // Correctly referencing the Button ID from the XML
+        // Initialize Firestore
+        firestore = FirebaseFirestore.getInstance();
+
+        // Initialize all views
+        mTvName = findViewById(R.id.tvName);
+        mTvEmail = findViewById(R.id.tvEmail);
+        mProfilePic = findViewById(R.id.ivProfilePic);
         mChangePicButton = findViewById(R.id.btnChangePic);
 
         mProfilePic = findViewById(R.id.ivProfilePic);
@@ -84,8 +96,44 @@ public class ProfileActivity extends AppCompatActivity {
             }
         });
 
-        // Example data display (optional)
-        // findViewById(R.id.tvName).setText("Name: Jane Doe");
+        // NEW: Call a method to load user data on startup
+        loadUserData();
+    }
+
+    private void loadUserData() {
+        FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+        if (user != null) {
+            // Load from Firestore
+            firestore.collection("users")
+                    .document(user.getUid())
+                    .get()
+                    .addOnSuccessListener(documentSnapshot -> {
+                        if (documentSnapshot.exists()) {
+                            String email = documentSnapshot.getString("email");
+                            String name = documentSnapshot.getString("name");
+                            String profileImageUrl = documentSnapshot.getString("profileImageUrl");
+
+                            mTvEmail.setText("Email: " + (email != null ? email : "N/A"));
+                            mTvName.setText("Name: " + (name != null && !name.isEmpty() ? name : "Please set your name"));
+
+                            // Load profile picture if available
+                            if (profileImageUrl != null && !profileImageUrl.isEmpty()) {
+                                Glide.with(this).load(profileImageUrl).into(mProfilePic);
+                            }
+                        } else {
+                            mTvName.setText("Name: User data not found");
+                            mTvEmail.setText("Email: User data not found");
+                        }
+                    })
+                    .addOnFailureListener(e -> {
+                        Toast.makeText(this, "Failed to load profile: " + e.getMessage(),
+                                Toast.LENGTH_SHORT).show();
+                    });
+        } else {
+            // Handle case where user is not logged in (e.g., redirect to login screen)
+            mTvName.setText("Name: (Not Logged In)");
+            mTvEmail.setText("Email: (Not Logged In)");
+        }
     }
 
     private void openFileChooser() {
@@ -132,8 +180,6 @@ public class ProfileActivity extends AppCompatActivity {
                     Log.e(TAG, "Signature Request Volley Error: " + error.toString());
                 }
         );
-
-        VolleySingleton.getInstance(this).addToRequestQueue(signatureRequest);
     }
 
     // New method for the second request (Direct Upload)
@@ -153,14 +199,27 @@ public class ProfileActivity extends AppCompatActivity {
                             JSONObject jsonObject = new JSONObject(result);
                             String secureUrl = jsonObject.getString("secure_url");
 
-                            // --- FIX 1: Reset State ---
-                            mImageUri = null; // Clear the URI
-                            mChangePicButton.setText("Change Photo"); // Reset button text
+                            // Save URL to Firestore
+                            FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+                            if (user != null) {
+                                firestore.collection("users")
+                                        .document(user.getUid())
+                                        .update("profileImageUrl", secureUrl)
+                                        .addOnSuccessListener(aVoid -> {
+                                            mImageUri = null;
+                                            mChangePicButton.setText("Change Photo");
+                                            displayNewProfilePicture(secureUrl);
+                                            Toast.makeText(ProfileActivity.this,
+                                                    "Profile picture updated!",
+                                                    Toast.LENGTH_SHORT).show();
+                                        })
+                                        .addOnFailureListener(e -> {
+                                            Toast.makeText(ProfileActivity.this,
+                                                    "Failed to save URL: " + e.getMessage(),
+                                                    Toast.LENGTH_SHORT).show();
+                                        });
+                            }
 
-                            // --- FIX 2: Display the Image ---
-                            displayNewProfilePicture(secureUrl); // Call the function to load the image
-
-                            Toast.makeText(ProfileActivity.this, "Upload Success! Photo loaded.", Toast.LENGTH_LONG).show();
                             Log.d(TAG, "Cloudinary Response: " + jsonObject.toString());
 
                         } catch (JSONException e) {

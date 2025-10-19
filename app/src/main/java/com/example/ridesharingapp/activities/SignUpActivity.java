@@ -24,6 +24,7 @@ import com.example.ridesharingapp.models.User;
 import com.example.ridesharingapp.models.Driver;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.storage.FirebaseStorage;
 import com.google.firebase.storage.StorageReference;
 
@@ -50,7 +51,7 @@ public class SignUpActivity extends AppCompatActivity {
     private TextView tvLicenseStatus, tvVehiclePicStatus, tvOrCrStatus, tvCertificationStatus;
 
     private FirebaseAuth auth;
-    private FirebaseDatabase database;
+    private FirebaseFirestore firestore;
     private FirebaseStorage storage;
 
     // Document URIs
@@ -108,7 +109,7 @@ public class SignUpActivity extends AppCompatActivity {
 
     private void initializeFirebase() {
         auth = FirebaseAuth.getInstance();
-        database = FirebaseDatabase.getInstance("https://ridesharingapp-ee55d-default-rtdb.asia-southeast1.firebasedatabase.app/");
+        firestore = FirebaseFirestore.getInstance();
         storage = FirebaseStorage.getInstance();
     }
 
@@ -427,14 +428,14 @@ public class SignUpActivity extends AppCompatActivity {
 
         User user = new User(uid, name, email, phone, "", userType, birthdate, validIdUrl,
                 isVerified, defaultRating, isActive);
+        user.setGender(gender);
 
-        database.getReference("users").child(uid).setValue(user)
+        firestore.collection("users")
+                .document(uid)
+                .set(user)
                 .addOnCompleteListener(dbTask -> {
                     progressBar.setVisibility(ProgressBar.GONE);
                     if (dbTask.isSuccessful()) {
-                        // Save gender separately
-                        database.getReference("users").child(uid).child("gender").setValue(gender);
-
                         Toast.makeText(SignUpActivity.this,
                                 "Account created successfully!",
                                 Toast.LENGTH_SHORT).show();
@@ -463,14 +464,14 @@ public class SignUpActivity extends AppCompatActivity {
                 "", "", "", false, 0.0, 0.0, "",
                 licenseUrl, vehiclePicUrl, orCrUrl, certificationUrl
         );
+        driver.setGender(gender);
 
-        database.getReference("users").child(uid).setValue(driver)
+        firestore.collection("users")
+                .document(uid)
+                .set(driver)
                 .addOnCompleteListener(dbTask -> {
                     progressBar.setVisibility(ProgressBar.GONE);
                     if (dbTask.isSuccessful()) {
-                        // Save gender separately
-                        database.getReference("users").child(uid).child("gender").setValue(gender);
-
                         Toast.makeText(SignUpActivity.this,
                                 "Account created successfully!",
                                 Toast.LENGTH_SHORT).show();

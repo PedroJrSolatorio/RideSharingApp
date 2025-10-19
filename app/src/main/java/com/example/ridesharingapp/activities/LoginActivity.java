@@ -23,6 +23,7 @@ import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.database.ValueEventListener;
+import com.google.firebase.firestore.FirebaseFirestore;
 
 public class LoginActivity extends AppCompatActivity {
 
@@ -33,7 +34,7 @@ public class LoginActivity extends AppCompatActivity {
     private FirebaseAuth auth;
 
     private FirebaseAuth mAuth;
-    private FirebaseDatabase database;
+    private FirebaseFirestore firestore;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -49,7 +50,7 @@ public class LoginActivity extends AppCompatActivity {
         progressBar = findViewById(R.id.progressBar);
 
         auth = FirebaseAuth.getInstance();
-        database = FirebaseDatabase.getInstance("https://ridesharingapp-ee55d-default-rtdb.asia-southeast1.firebasedatabase.app/");
+        firestore = FirebaseFirestore.getInstance();
 
         btnLogin.setOnClickListener(v -> loginUser());
         btnSignUp.setOnClickListener(v -> {
@@ -126,11 +127,12 @@ public class LoginActivity extends AppCompatActivity {
     }
 
     private void checkUserType(String uid) {
-        database.getReference("users").child(uid)
-                .addListenerForSingleValueEvent(new ValueEventListener() {
-                    @Override
-                    public void onDataChange(@NonNull DataSnapshot snapshot) {
-                        User user = snapshot.getValue(User.class);
+        firestore.collection("users")
+                .document(uid)
+                .get()
+                .addOnSuccessListener(documentSnapshot -> {
+                    if (documentSnapshot.exists()) {
+                        User user = documentSnapshot.toObject(User.class);
                         if (user != null) {
                             Intent intent;
                             if ("driver".equals(user.getUserType())) {
@@ -139,21 +141,19 @@ public class LoginActivity extends AppCompatActivity {
                                 intent = new Intent(LoginActivity.this, RiderMainActivity.class);
                             }
 
-                            // Apply flags to clear the back stack so the user cannot press back to the LoginActivity
                             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
                             startActivity(intent);
-
-                            finish(); // Close login page
+                            finish();
                         } else {
                             Toast.makeText(LoginActivity.this, "User data not found", Toast.LENGTH_SHORT).show();
                         }
+                    } else {
+                        Toast.makeText(LoginActivity.this, "User profile does not exist", Toast.LENGTH_SHORT).show();
                     }
-
-                    @Override
-                    public void onCancelled(@NonNull DatabaseError error) {
-                        Toast.makeText(LoginActivity.this, "Database error: " + error.getMessage(),
-                                Toast.LENGTH_SHORT).show();
-                    }
+                })
+                .addOnFailureListener(e -> {
+                    Toast.makeText(LoginActivity.this, "Database error: " + e.getMessage(),
+                            Toast.LENGTH_SHORT).show();
                 });
     }
 }
