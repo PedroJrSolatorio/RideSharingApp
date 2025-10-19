@@ -543,7 +543,7 @@ public class SignUpActivity extends AppCompatActivity {
         double defaultRating = 5.0;
         boolean isActive = true;
 
-        User user = new User(uid, name, email, phone, "", userType, birthdate, validIdUrl,
+        User user = new User(uid, name, email, phone, validIdUrl, userType, birthdate, validIdUrl,
                 isVerified, defaultRating, isActive);
         user.setGender(gender);
 
@@ -576,7 +576,7 @@ public class SignUpActivity extends AppCompatActivity {
         boolean isActive = true;
 
         Driver driver = new Driver(
-                uid, name, email, phone, "", userType,
+                uid, name, email, phone, vehiclePicUrl, userType,
                 birthdate, validIdUrl, isVerified, defaultRating, isActive,
                 "", "", "", false, 0.0, 0.0, "",
                 licenseUrl, vehiclePicUrl, orCrUrl, certificationUrl

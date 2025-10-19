@@ -1,6 +1,7 @@
 package com.example.ridesharingapp.activities;
 
 import android.app.ProgressDialog;
+import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
@@ -15,7 +16,6 @@ import com.android.volley.NetworkResponse;
 import com.android.volley.Request;
 import com.android.volley.Response;
 import com.android.volley.VolleyError;
-import com.android.volley.toolbox.JsonObjectRequest;
 import com.example.ridesharingapp.R;
 import com.example.ridesharingapp.utils.AppHelper;
 import com.example.ridesharingapp.utils.CloudinaryHelper;
@@ -54,6 +54,7 @@ public class ProfileActivity extends AppCompatActivity {
     private TextView mTvName;
     private TextView mTvEmail;
     private CircleImageView mProfilePic;
+    private Button mLogoutButton;
 
     // Use ActivityResultLauncher for image selection
     private final ActivityResultLauncher<String> mGetContent = registerForActivityResult(
@@ -97,7 +98,21 @@ public class ProfileActivity extends AppCompatActivity {
             }
         });
 
-        // NEW: Call a method to load user data on startup
+        mLogoutButton = findViewById(R.id.btnLogout);
+        mLogoutButton.setOnClickListener(v -> {
+            FirebaseAuth.getInstance().signOut(); // Logs out the user
+            Toast.makeText(ProfileActivity.this, "Logged out successfully", Toast.LENGTH_SHORT).show();
+
+            // Optional: Clear any cached data or preferences if needed
+
+            // Redirect to your LoginActivity (or whatever your login screen is)
+            Intent intent = new Intent(ProfileActivity.this, LoginActivity.class);
+            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+            startActivity(intent);
+            finish(); // Close ProfileActivity
+        });
+
+        // load user data on startup
         loadUserData();
     }
 
@@ -113,13 +128,26 @@ public class ProfileActivity extends AppCompatActivity {
                             String email = documentSnapshot.getString("email");
                             String name = documentSnapshot.getString("name");
                             String profileImageUrl = documentSnapshot.getString("profileImageUrl");
+                            String validIdUrl = documentSnapshot.getString("validIdUrl");
 
                             mTvEmail.setText("Email: " + (email != null ? email : "N/A"));
                             mTvName.setText("Name: " + (name != null && !name.isEmpty() ? name : "Please set your name"));
 
-                            // Load profile picture if available
+                            // Try to load profile picture, fallback to valid ID
+                            String imageToLoad = null;
                             if (profileImageUrl != null && !profileImageUrl.isEmpty()) {
-                                Glide.with(this).load(profileImageUrl).into(mProfilePic);
+                                imageToLoad = profileImageUrl;
+                            } else if (validIdUrl != null && !validIdUrl.isEmpty()) {
+                                // Use valid ID as temporary profile pic if no profile pic exists
+                                imageToLoad = validIdUrl;
+                            }
+
+                            if (imageToLoad != null) {
+                                Glide.with(this)
+                                        .load(imageToLoad)
+                                        .placeholder(R.drawable.ic_profile_placeholder) // Add a placeholder
+                                        .error(R.drawable.ic_profile_placeholder) // Show on error
+                                        .into(mProfilePic);
                             }
                         } else {
                             mTvName.setText("Name: User data not found");
@@ -187,7 +215,7 @@ public class ProfileActivity extends AppCompatActivity {
         });
     }
 
-    // New method for the second request (Direct Upload)
+    // method for the second request (Direct Upload)
     private void uploadToCloudinary(String signature, String timestamp, String cloudName, String apiKey, String folder) {
         // Build the final Cloudinary upload URL
         final String finalCloudinaryUrl = CLOUDINARY_UPLOAD_URL + cloudName + "/image/upload";
